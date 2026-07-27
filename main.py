@@ -1,6 +1,7 @@
 """Точка входа: загрузка данных → предобработка → обучение с CV → сабмит + метрики."""
 import json
 
+import numpy as np
 import pandas as pd
 from sklearn.model_selection import KFold
 
@@ -13,20 +14,22 @@ from src.train import run_model
 
 def main():
     seed = config.general.seed
-    cv = KFold(n_splits=5, shuffle=True, random_state=seed)
+    cv = KFold(n_splits=config.cv.n_splits, shuffle=config.cv.shuffle, random_state=seed)
 
     train_raw, test_raw = load_raw_data(config.paths.path_to_train, config.paths.path_to_test)
-    train, test, train_cat, test_cat = preprocessing(train_raw, test_raw, cv)
+    train, test, train_cat, test_cat, cat_features = preprocessing(train_raw, test_raw, cv)
 
     X, y = train.drop(columns=["SalePrice"]), train["SalePrice"]
     X_cat, y_cat = train_cat.drop(columns=["SalePrice"]), train_cat["SalePrice"]
 
     models = build_models(config, seed)
 
+    print("\nMODEL TRAINING:")
+
     stats, results = {}, {}
     for name, model in models.items():
         X_input, y_input = (X_cat, y_cat) if name == "cb" else (X, y)
-        fit_params = {"cat_features": list(config.training.catboost.cat_features)} if name == "cb" else None
+        fit_params = {"cat_features": cat_features} if name == "cb" else None
         results[name] = run_model(
             name, model, X_input, y_input, cv,
             needs_scaling=name in NEEDS_SCALING, fit_params=fit_params, stats=stats,
@@ -39,19 +42,19 @@ def main():
     stats["Stacking"] = meta_cv_score
 
     X_meta_test = build_test_meta_features(results, test, test_cat, stacking_members)
-    final_preds = (meta_model.predict_proba(X_meta_test)[:, 1] >= 0.5).astype(int)
+    final_preds_log = meta_model.predict(X_meta_test)
+    final_preds = np.expm1(final_preds_log)
 
-    submission = pd.DataFrame({"PassengerId": test_raw["PassengerId"], "Survived": final_preds})
+    submission = pd.DataFrame({"Id": test_raw["Id"], "SalePrice": final_preds})
     submission.to_csv(config.paths.path_to_submission, index=False)
 
     with open(config.paths.path_to_metrics, "w") as f:
-        json.dump(stats, f, indent=2)
+        json.dump({k: float(v) for k, v in stats.items()}, f, indent=2)
 
-    print("\nMetrics (OOF / CV accuracy):")
-    for name, acc in sorted(stats.items(), key=lambda x: x[1], reverse=True):
-        print(f"{name:<10} {acc:.4f}")
-    print(f"\nSUBMIT SAVED IN \'{config.paths.path_to_submission}\'")
-
+    print(f"\nFINAL TABLE (OOF/CV RMSLE)")
+    for name, rmse in sorted(stats.items(), key=lambda x: x[1]):
+        print(f"{name:<9}: {rmse:<10.4f}")
+    print(f"\nSUBMIT SAVED IN '{config.paths.path_to_submission}'")
 
 if __name__ == "__main__":
     main()

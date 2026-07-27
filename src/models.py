@@ -1,67 +1,70 @@
 """Построение всех моделей пайплайна с гиперпараметрами, зафиксированными в config."""
 import copy
+
 import numpy as np
-import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from sklearn.base import BaseEstimator, RegressorMixin
-from sklearn.dummy import DummyRegressor
-from sklearn.linear_model import ElasticNet, LinearRegression
-from sklearn.neighbors import KNeighborsRegressor
-from sklearn.tree import DecisionTreeRegressor
-from sklearn.ensemble import RandomForestRegressor
 from catboost import CatBoostRegressor
 from lightgbm import LGBMRegressor
-from xgboost import XGBRegressor
+from sklearn.base import BaseEstimator, RegressorMixin
+from sklearn.dummy import DummyRegressor
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import ElasticNet
 from sklearn.model_selection import train_test_split
+from sklearn.neighbors import KNeighborsRegressor
 from sklearn.preprocessing import StandardScaler
+from sklearn.tree import DecisionTreeRegressor
 from torch.utils.data import DataLoader, TensorDataset
+from xgboost import XGBRegressor
 
-# Модели, которым нужны отмасштабированные признаки
 NEEDS_SCALING = {"lr", "knn", "nn"}
 
 
 class NN3(nn.Module):
-    def __init__(self, input_dim):
+    """MLP: три скрытых слоя с настраиваемой шириной каждого (совпадает с архитектурой из eda.ipynb)."""
+
+    def __init__(self, input_dim: int, hidden_dim1: int = 56, hidden_dim2: int = 32, hidden_dim3: int = 16,
+                 dropout1: float = 0.3, dropout2: float = 0.2, dropout3: float = 0.1):
         super().__init__()
-        self.layer_1 = nn.Linear(input_dim, 56)
-        self.bn1 = nn.BatchNorm1d(56)
+        self.layer_1 = nn.Linear(input_dim, hidden_dim1)
+        self.bn1 = nn.BatchNorm1d(hidden_dim1)
         self.silu1 = nn.SiLU()
-        self.dropout1 = nn.Dropout(0.3)
+        self.dropout1 = nn.Dropout(dropout1)
 
-        self.layer_2 = nn.Linear(56, 32)
-        self.bn2 = nn.BatchNorm1d(32)
+        self.layer_2 = nn.Linear(hidden_dim1, hidden_dim2)
+        self.bn2 = nn.BatchNorm1d(hidden_dim2)
         self.silu2 = nn.SiLU()
-        self.dropout2 = nn.Dropout(0.2)
+        self.dropout2 = nn.Dropout(dropout2)
 
-        self.layer_3 = nn.Linear(32, 16)
-        self.bn3 = nn.BatchNorm1d(16)
-        self.silu3 = nn.ReLU()
-        self.dropout3 = nn.Dropout(0.1)
+        self.layer_3 = nn.Linear(hidden_dim2, hidden_dim3)
+        self.bn3 = nn.BatchNorm1d(hidden_dim3)
+        self.relu3 = nn.ReLU()
+        self.dropout3 = nn.Dropout(dropout3)
 
-        self.layer_4 = nn.Linear(16, 1)
-    
+        self.output = nn.Linear(hidden_dim3, 1)
+
     def forward(self, x):
         x = self.dropout1(self.silu1(self.bn1(self.layer_1(x))))
         x = self.dropout2(self.silu2(self.bn2(self.layer_2(x))))
-        x = self.dropout3(self.silu3(self.bn3(self.layer_3(x))))
-        return self.layer_4(x)
+        x = self.dropout3(self.relu3(self.bn3(self.layer_3(x))))
+        return self.output(x)
+
 
 class TorchNNRegressor(BaseEstimator, RegressorMixin):
-    """Sklearn-совместимая обёртка над NN3: fit/predict_proba/clone работают как у любой sklearn-модели.
+    """Sklearn-совместимая обёртка над NN3 для регрессии SalePrice (уже в лог-пространстве)."""
 
-    Внутри себя разбивает train на train/val для early stopping — этот сплит
-    независим от внешней кросс-валидации в run_model, поэтому снаружи модель
-    не нуждается в needs_scaling=True: масштабирование признаков она делает сама.
-    """
-
-    def __init__(self, hidden_dim=32, dropout1=0.3, dropout2=0.2, lr=0.005, weight_decay=1e-4,
-                 num_epochs=150, batch_size=32, val_split=0.2, patience=10, min_delta=1e-4,
-                 scheduler_patience=10, scheduler_factor=0.1, seed=0, device=None):
-        self.hidden_dim = hidden_dim
+    def __init__(self, hidden_dim1=56, hidden_dim2=32, hidden_dim3=16,
+                 dropout1=0.3, dropout2=0.2, dropout3=0.1,
+                 lr=0.005, weight_decay=1e-4, num_epochs=150, batch_size=32, val_split=0.2,
+                 patience=10, min_delta=1e-4, scheduler_patience=10, scheduler_factor=0.1,
+                 seed=0, device=None):
+        self.hidden_dim1 = hidden_dim1
+        self.hidden_dim2 = hidden_dim2
+        self.hidden_dim3 = hidden_dim3
         self.dropout1 = dropout1
         self.dropout2 = dropout2
+        self.dropout3 = dropout3
         self.lr = lr
         self.weight_decay = weight_decay
         self.num_epochs = num_epochs
@@ -84,11 +87,13 @@ class TorchNNRegressor(BaseEstimator, RegressorMixin):
         X_train_scaled = self.scaler_.fit_transform(X_train)
         X_val_scaled = self.scaler_.transform(X_val)
 
-        self.model_ = NN3(X_train_scaled.shape[1], self.hidden_dim, self.dropout1, self.dropout2).to(self.device)
+        self.model_ = NN3(
+            X_train_scaled.shape[1],
+            hidden_dim1=self.hidden_dim1, hidden_dim2=self.hidden_dim2, hidden_dim3=self.hidden_dim3,
+            dropout1=self.dropout1, dropout2=self.dropout2, dropout3=self.dropout3,
+        ).to(self.device)
 
-        class_counts = pd.Series(y_train).value_counts()
-        pos_weight = torch.tensor([class_counts[0] / class_counts[1]], dtype=torch.float32).to(self.device)
-        criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+        criterion = nn.MSELoss()
         optimizer = optim.Adam(self.model_.parameters(), lr=self.lr, weight_decay=self.weight_decay)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, mode="min", patience=self.scheduler_patience, factor=self.scheduler_factor
@@ -134,12 +139,13 @@ class TorchNNRegressor(BaseEstimator, RegressorMixin):
             self.model_.load_state_dict(best_weights)
         return self
 
-    def predict_proba(self, X):
+    def predict(self, X):
         X_scaled = self.scaler_.transform(np.asarray(X, dtype=np.float32))
         self.model_.eval()
         with torch.no_grad():
-            probs_1 = torch.sigmoid(self.model_(torch.tensor(X_scaled).to(self.device))).cpu().numpy().flatten()
-        return np.column_stack([1 - probs_1, probs_1])
+            preds = self.model_(torch.tensor(X_scaled, dtype=torch.float32).to(self.device)).cpu().numpy().flatten()
+        return preds
+
 
 def build_models(cfg, seed: int) -> dict:
     """Возвращает словарь {название: необученная модель} по конфигу."""
@@ -151,14 +157,12 @@ def build_models(cfg, seed: int) -> dict:
         "tree": DecisionTreeRegressor(random_state=seed, **t.decision_tree),
         "rf": RandomForestRegressor(random_state=seed, **t.random_forest),
         "lgbm": LGBMRegressor(random_state=seed, n_jobs=-1, verbose=-1, **t.lightgbm),
-        "xgb": XGBRegressor(random_state=seed, eval_metric="logloss", n_jobs=-1, **t.xgboost),
-        "cb": CatBoostRegressor(
-            random_seed=seed, logging_level="Silent", allow_writing_files=False,
-            **{k: v for k, v in t.catboost.items() if k != "cat_features"},
-        ),
+        "xgb": XGBRegressor(random_state=seed, eval_metric="rmse", n_jobs=-1, **t.xgboost),
+        "cb": CatBoostRegressor(random_seed=seed, logging_level="Silent", allow_writing_files=False, **t.catboost),
         "nn": TorchNNRegressor(
             seed=seed,
-            hidden_dim=t.nn.hidden_dim, dropout1=t.nn.dropout1, dropout2=t.nn.dropout2,
+            hidden_dim1=t.nn.hidden_dim1, hidden_dim2=t.nn.hidden_dim2, hidden_dim3=t.nn.hidden_dim3,
+            dropout1=t.nn.dropout1, dropout2=t.nn.dropout2, dropout3=t.nn.dropout3,
             lr=t.nn.lr, weight_decay=t.nn.weight_decay, num_epochs=t.nn.num_epochs,
             patience=t.nn.early_stopping.patience, min_delta=t.nn.early_stopping.min_delta,
             scheduler_patience=t.nn.scheduler.patience, scheduler_factor=t.nn.scheduler.factor,

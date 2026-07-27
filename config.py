@@ -18,9 +18,6 @@ config = {
         "n_splits": 5,
         "shuffle": True,
     },
-    "preprocessing": {
-        "cat_features": ["Embarked", "Title", "Deck"],
-    },
     "training": {
         "dummy": {
             "strategy": "mean",
@@ -31,8 +28,8 @@ config = {
             "max_iter": 20000,
             "tol": 1e-3,
         },
-        "knn": {    
-            "n_neighbors": 7,       
+        "knn": {
+            "n_neighbors": 7,
             "weights": "distance",
             "metric": "manhattan",
         },
@@ -60,14 +57,6 @@ config = {
             "l2_leaf_reg": 1,
             "random_strength": 0.0,
             "bagging_temperature": 1.0,
-            "cat_features": ['MSSubClass', 'MSZoning', 'Street', 'Alley', 'LotShape',
-                             'LandContour','Utilities', 'LotConfig', 'LandSlope', 'Neighborhood', 
-                             'Condition1', 'Condition2', 'BldgType', 'HouseStyle', 'RoofStyle', 'RoofMatl', 
-                             'Exterior1st', 'Exterior2nd', 'MasVnrType', 'ExterQual', 'ExterCond', 'Foundation',
-                             'BsmtQual', 'BsmtCond', 'BsmtExposure', 'BsmtFinType1', 'BsmtFinType2', 'Heating',
-                             'HeatingQC', 'CentralAir', 'Electrical', 'KitchenQual', 'Functional', 'FireplaceQu',
-                             'GarageType', 'GarageFinish', 'GarageQual', 'GarageCond', 'PavedDrive', 'PoolQC',
-                             'Fence', 'MiscFeature', 'SaleType', 'SaleCondition'],
         },
         "lightgbm": {
             "n_estimators": 200,
@@ -85,9 +74,12 @@ config = {
             "colsample_bytree": 0.7,
         },
         "nn": {
-            "hidden_dim": 32,
-            "dropout1": 0.3,
-            "dropout2": 0.2,
+            "hidden_dim1": 56, 
+            "hidden_dim2": 32, 
+            "hidden_dim3": 16,
+            "dropout1": 0.3, 
+            "dropout2": 0.2, 
+            "dropout3": 0.1,
             "num_epochs": 150,
             "lr": 0.005,
             "weight_decay": 1e-4,
@@ -96,7 +88,6 @@ config = {
         },
         "stacking": {
             "meta_members": ["lr", "lgbm", "xgb", "cb"],
-            "C": 1.0,
         },
     },
     "dataloader": {"batch_size": 32, "num_workers": 2, "shuffle": True},
