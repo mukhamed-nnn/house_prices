@@ -9,6 +9,16 @@ def load_raw_data(path_to_train: str, path_to_test: str) -> tuple[pd.DataFrame, 
 
 
 def preprocessing(train, test, cv):
+    """Полный пайплайн предобработки House Prices: фильтрация выбросов, импутация
+    (статистики считаются только по train), feature engineering, порядковое
+    кодирование шкал качества, OHE для низкокардинальных категорий и честный
+    K-Fold target encoding для высококардинальных (Neighborhood и т.п.).
+
+    Возвращает (train, test, train_cat, test_cat, cat_features), где *_cat —
+    версии с сырыми категориальными колонками для CatBoost, а cat_features —
+    список колонок, которые остались категориальными после кодирования
+    (для передачи в CatBoostRegressor(cat_features=...)).
+    """
     train = train[~train['Id'].isin([1299, 524])].reset_index(drop=True)
     train = train[train['GrLivArea'] <= 4000]
     df = pd.concat([train, test], sort=False).reset_index(drop=True)
@@ -85,8 +95,6 @@ def preprocessing(train, test, cv):
 
     exclude_columns = ['Id', 'SalePrice'] + already_ordinal
     THRESHOLD = 6
-    num_features = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
-    num_features = [col for col in num_features if col not in exclude_columns]
     cat_columns = df.select_dtypes(include=['object', 'category', 'str']).columns.tolist()
     cat_columns = [col for col in cat_columns if col not in exclude_columns]
 

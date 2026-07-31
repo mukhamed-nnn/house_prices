@@ -160,7 +160,7 @@ def build_models(cfg, seed: int) -> dict:
         "xgb": XGBRegressor(random_state=seed, eval_metric="rmse", n_jobs=-1, **t.xgboost),
         "cb": CatBoostRegressor(random_seed=seed, logging_level="Silent", allow_writing_files=False, **t.catboost),
         "nn": TorchNNRegressor(
-            seed=seed,
+            seed=seed, device=cfg.general.device,
             hidden_dim1=t.nn.hidden_dim1, hidden_dim2=t.nn.hidden_dim2, hidden_dim3=t.nn.hidden_dim3,
             dropout1=t.nn.dropout1, dropout2=t.nn.dropout2, dropout3=t.nn.dropout3,
             lr=t.nn.lr, weight_decay=t.nn.weight_decay, num_epochs=t.nn.num_epochs,

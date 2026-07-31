@@ -1,5 +1,6 @@
 """Точка входа: загрузка данных → предобработка → обучение с CV → сабмит + метрики."""
 import json
+import os
 
 import numpy as np
 import pandas as pd
@@ -46,8 +47,11 @@ def main():
     final_preds = np.expm1(final_preds_log)
 
     submission = pd.DataFrame({"Id": test_raw["Id"], "SalePrice": final_preds})
+    os.makedirs(os.path.dirname(config.paths.path_to_submission), exist_ok=True)
+    os.makedirs(os.path.dirname(config.paths.path_to_metrics), exist_ok=True)
     submission.to_csv(config.paths.path_to_submission, index=False)
 
+    
     with open(config.paths.path_to_metrics, "w") as f:
         json.dump({k: float(v) for k, v in stats.items()}, f, indent=2)
 
