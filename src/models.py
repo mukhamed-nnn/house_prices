@@ -88,8 +88,6 @@ class TorchNNRegressor(BaseEstimator, RegressorMixin):
         X_train_scaled = self.scaler_.fit_transform(X_train)
         X_val_scaled = self.scaler_.transform(X_val)
 
-        # MSE в сыром лог-пространстве (y ~ 10.5-13.5) заставляет сеть тратить обучение
-        # на подбор смещения, а не на сигнал — стандартизируем таргет так же, как X.
         self.y_mean_, self.y_std_ = y_train.mean(), y_train.std()
         y_train = (y_train - self.y_mean_) / self.y_std_
         y_val = (y_val - self.y_mean_) / self.y_std_
