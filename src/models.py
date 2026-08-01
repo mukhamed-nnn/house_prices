@@ -18,7 +18,7 @@ from sklearn.tree import DecisionTreeRegressor
 from torch.utils.data import DataLoader, TensorDataset
 from xgboost import XGBRegressor
 
-NEEDS_SCALING = {"lr", "knn", "nn"}
+NEEDS_SCALING = {"lr", "knn"}
 
 
 class NN3(nn.Module):
@@ -78,6 +78,7 @@ class TorchNNRegressor(BaseEstimator, RegressorMixin):
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
 
     def fit(self, X, y):
+        torch.manual_seed(self.seed)
         X = np.asarray(X, dtype=np.float32)
         y = np.asarray(y, dtype=np.float32)
 
@@ -86,6 +87,12 @@ class TorchNNRegressor(BaseEstimator, RegressorMixin):
         self.scaler_ = StandardScaler()
         X_train_scaled = self.scaler_.fit_transform(X_train)
         X_val_scaled = self.scaler_.transform(X_val)
+
+        # MSE в сыром лог-пространстве (y ~ 10.5-13.5) заставляет сеть тратить обучение
+        # на подбор смещения, а не на сигнал — стандартизируем таргет так же, как X.
+        self.y_mean_, self.y_std_ = y_train.mean(), y_train.std()
+        y_train = (y_train - self.y_mean_) / self.y_std_
+        y_val = (y_val - self.y_mean_) / self.y_std_
 
         self.model_ = NN3(
             X_train_scaled.shape[1],
@@ -144,7 +151,7 @@ class TorchNNRegressor(BaseEstimator, RegressorMixin):
         self.model_.eval()
         with torch.no_grad():
             preds = self.model_(torch.tensor(X_scaled, dtype=torch.float32).to(self.device)).cpu().numpy().flatten()
-        return preds
+        return preds * self.y_std_ + self.y_mean_
 
 
 def build_models(cfg, seed: int) -> dict:

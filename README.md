@@ -17,7 +17,7 @@ rf    : OOF RMSLE = 0.1415 │ by folds: 0.1411 ± 0.0102
 lgbm  : OOF RMSLE = 0.1194 │ by folds: 0.1191 ± 0.0075
 xgb   : OOF RMSLE = 0.1186 │ by folds: 0.1183 ± 0.0082
 cb    : OOF RMSLE = 0.1187 │ by folds: 0.1185 ± 0.0081
-nn    : OOF RMSLE = 0.3438 │ by folds: 0.3425 ± 0.0295
+nn    : OOF RMSLE = 0.1251 │ by folds: 0.1248 ± 0.0099
 ```
 
 ### Сводная таблица финального ансамбля (Финальный рейтинг)
@@ -30,10 +30,10 @@ nn    : OOF RMSLE = 0.3438 │ by folds: 0.3425 ± 0.0295
 | XGBoost | 0.1186 | Градиентный бустинг (DMatrix) |
 | CatBoost | 0.1187 | Градиентный бустинг (Категории) |
 | LightGBM | 0.1194 | Гистограммный бустинг |
+| PyTorch Neural Network (NN3) | 0.1251 | Полносвязная нейросеть (Deep Learning) |
 | RandomForest | 0.1415 | Бэггинг над деревьями решений |
 | KNeighbors | 0.1605 | Метрический алгоритм (KNN) |
 | Decision Tree | 0.1638 | Одиночное решающее дерево |
-| PyTorch Neural Network (NN3) | 0.3438 | Полносвязная нейросеть (Deep Learning) |
 | Dummy Baseline | 0.3962 | Наивный регрессор (константное среднее) |
 
 ## 📁 Структура репозитория
